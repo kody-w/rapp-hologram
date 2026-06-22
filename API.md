@@ -79,6 +79,10 @@ const Homeostasis = require("./homeostasis.js");
 | `?zoo` | your local menagerie (keyed by your browser key) |
 | `?keeper=<fp>` | a zookeeper's public menagerie |
 | `?dial=<pk>&{bio,grew,at,lineage}` | git-as-harness views (when lineage artifacts are present) |
+| `fractal.html?m=<token>` | nested Moments — render a Moment whose record carries an `embed` (a child token, or `"self"`), with the child played in an in-world portal that recurses ([rapp-moment SPEC §11⅞](https://github.com/kody-w/rapp-moment/blob/main/SPEC.md)). Depth-capped. |
+| `fractal.html?demo={chain,mirror}` | baked demos — `chain` = 4 distinct nested worlds, `mirror` = a Moment that embeds itself (hall of mirrors) |
+
+`fractal.html` reads each record's `embed` and mounts `index.html?m=<embed>` as a portal, then recurses — the whole nesting travels inside the one token. It honors §11⅞'s rules: unknown-field-inert (a plain player just plays the host organism) and a finite recursion cap.
 
 The token format is the standard's canonical share token: `base64url(JSON.stringify(record))`, padding
 stripped. See [`rapp-moment` examples](https://github.com/kody-w/rapp-moment/blob/main/examples/TOKENS.md).

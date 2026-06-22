@@ -50,6 +50,7 @@ Eight pure modules, usable in the browser (globals) or Node (`require`). Full re
 | `fidelity.js` | `Fidelity` | growth over time — `refineOverTime`, `weaveFrame`, `weaveCheck` |
 | `resolve.js` | `Resolve` | the Gateway — `document(m)` → ERC-721/OpenSea-compatible JSON + `metaTags` |
 | `moment.js` | (player) | the browser player/UI glue for `index.html` |
+| `fractal.html` | (surface) | nested Moments (SPEC §11⅞) — renders a Moment's `embed` (a child token, or `"self"`) as an in-world portal that recurses; `?demo={chain,mirror}` |
 
 ## Conformance
 
