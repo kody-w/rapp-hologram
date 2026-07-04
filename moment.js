@@ -1,70 +1,51 @@
 /* (c) 2026 Kody Wildfeuer - PolyForm Noncommercial 1.0.0, see /LICENSE - noncommercial use only - "Holographic Moments" is a trademark. */
-/* Holographic Moments — one engine, three modes (feed / create / play). A MOMENT is a deterministic
-   100-frame sequence: a few keyframes of a FORM {size,legs,spikes,glow,hue,x,z} interpolated to 100
-   frames and played as a walkable hologram. Serverless: a Moment encodes to base64 in the URL and
-   streams nowhere — it IS the link. Shareable by URL + QR. THREE r128 + qrcodejs from CDN. */
+/* Holographic Moments — one engine, three modes (feed / create / play). Legacy Moments still decode,
+   but all playback now runs through the shared universal Lantern cartridge player with no CDN assets. */
 (function () {
   "use strict";
   var W = window, D = document;
-  var THREE = W.THREE;
-
-  // ---- 3D world ----
-  var canvas = D.getElementById("c");
-  var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(W.devicePixelRatio, 2)); renderer.setSize(W.innerWidth, W.innerHeight);
-  var scene = new THREE.Scene();
-  var camera = new THREE.PerspectiveCamera(58, W.innerWidth / W.innerHeight, 0.1, 600);
-  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-  var sun = new THREE.DirectionalLight(0xfff2d6, 1.1); sun.position.set(10, 20, 8); scene.add(sun);
-  var ground = new THREE.Mesh(new THREE.CircleGeometry(80, 64), new THREE.MeshStandardMaterial({ color: 0x35562a, roughness: 1 }));
-  ground.rotateX(-Math.PI / 2); scene.add(ground);
-  var flora = new THREE.Group(); scene.add(flora);
+  var Bridge = W.HologramBridge;
+  var playerFrame = D.getElementById("player");
+  var playerPort = null, playerReady = null;
 
   var BIOMES = {
-    savanna: { g: 0x35562a, sky: 0x9fc6e8, fog: 0x9fc6e8, fl: 0x6fae4a },
-    canyon: { g: 0x6b4a26, sky: 0xe6c089, fog: 0xd8b27a, fl: 0x8a6a3a },
-    forest: { g: 0x142436, sky: 0x123244, fog: 0x1f5f6e, fl: 0x35e0c0 },
-    volcanic: { g: 0x2a1414, sky: 0x3a1414, fog: 0x6a1f1f, fl: 0x7f1d1d },
-    void: { g: 0x0a0a12, sky: 0x05060a, fog: 0x0a0a16, fl: 0x222a3a }
+    savanna: { sky: "#9fc6e8", floor: "#35562a" },
+    canyon: { sky: "#e6c089", floor: "#6b4a26" },
+    forest: { sky: "#123244", floor: "#142436" },
+    volcanic: { sky: "#3a1414", floor: "#2a1414" },
+    void: { sky: "#05060a", floor: "#0a0a12" }
   };
   function setBiome(b) {
     var P = BIOMES[b] || BIOMES.savanna;
-    scene.background = new THREE.Color(P.sky); scene.fog = new THREE.Fog(P.fog, 30, 120); ground.material.color.setHex(P.g);
-    scene.remove(flora); flora = new THREE.Group(); scene.add(flora);
-    for (var i = 0; i < 46; i++) {
-      var a = (i * 137.5) * Math.PI / 180, r = 6 + (i % 9) * 5;
-      var m = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.4 + (i % 3) * 0.5, 6),
-        new THREE.MeshStandardMaterial({ color: P.fl, roughness: 0.9, emissive: b === "forest" ? P.fl : 0, emissiveIntensity: b === "forest" ? 0.5 : 0 }));
-      m.position.set(Math.cos(a) * r, 0.8, Math.sin(a) * r); flora.add(m);
-    }
+    D.body.style.background = "linear-gradient(180deg," + P.sky + " 0%," + P.floor + " 100%)";
   }
 
-  var FORM = null, FORM_T = 0;
-  function hsl(h) { var c = new THREE.Color(); c.setHSL(((h % 360) + 360) % 360 / 360, 0.72, 0.56); return c; }
-  function buildForm(f) {
-    var keepP = FORM ? FORM.position.clone() : null, keepR = FORM ? FORM.rotation.y : 0;
-    if (FORM) scene.remove(FORM);
-    var col = hsl(f.h), size = 0.8 + f.s * 1.9, legLen = 0.35 + f.l * 1.9, bodyY = legLen + size * 0.5;
-    var g = new THREE.Group();
-    var mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.5, metalness: 0.1, emissive: col, emissiveIntensity: 0.25 + f.g * 0.7 });
-    var body = new THREE.Mesh(new THREE.BoxGeometry(size * 1.7, size, size * 1.1), mat); body.position.y = bodyY; g.add(body);
-    var lt = new THREE.PointLight(col, 0.6 + f.g * 2.2, 22); lt.position.set(0, bodyY + 1.2, 0); g.add(lt);
-    var head = new THREE.Mesh(new THREE.BoxGeometry(size * 0.75, size * 0.75, size * 0.75), mat); head.position.set(size * 1.05, bodyY + size * 0.25, 0); g.add(head);
-    [-0.22, 0.22].forEach(function (dz) { var e = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffe08a, emissiveIntensity: 1.3 })); e.position.set(size * 1.45, bodyY + size * 0.35, dz * size); g.add(e); });
-    [[-0.55, -0.42], [-0.55, 0.42], [0.55, -0.42], [0.55, 0.42]].forEach(function (p) { var leg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, legLen, 6), mat); leg.position.set(p[0] * size, legLen / 2, p[1] * size); g.add(leg); });
-    var ns = Math.round(f.p * 8);
-    for (var i = 0; i < ns; i++) { var sp = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.4 + f.p * 0.6, 5), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.5 })); sp.position.set(((i + 0.5) / ns - 0.5) * size * 1.2, bodyY + size * 0.55, 0); g.add(sp); }
-    g.position.set(f.x * 12, 0, f.z * 12);
-    if (keepP) { g.position.y = keepP.y; g.rotation.y = keepR; }
-    scene.add(g); FORM = g; FORM.bodyY = bodyY; FORM.cur = f;
-    FORM.heartLight = lt; FORM.baseLI = 0.6 + f.g * 2.2;   // the glow that pulses with the heartbeat
+  function ensurePlayer() {
+    if (!playerFrame) return Promise.reject(new Error("player iframe missing"));
+    if (playerPort) return Promise.resolve(playerPort);
+    if (playerReady) return playerReady;
+    playerReady = new Promise(function (resolve, reject) {
+      var ch = new MessageChannel();
+      var done = false;
+      ch.port1.onmessage = function (ev) {
+        if (!ev.data || !ev.data.type) return;
+        if (ev.data.type === "ready" && !done) { done = true; playerPort = ch.port1; resolve(playerPort); }
+      };
+      var start = function () {
+        try { playerFrame.contentWindow.postMessage({ type: "hologram-init" }, "*", [ch.port2]); }
+        catch (e) { reject(e); }
+      };
+      if (playerFrame.contentDocument && playerFrame.contentDocument.readyState === "complete") start();
+      else playerFrame.addEventListener("load", function onload() { playerFrame.dataset.ready = "1"; playerFrame.removeEventListener("load", onload); start(); }, { once: true });
+      setTimeout(function () { if (!done) reject(new Error("player init timeout")); }, 4000);
+    });
+    return playerReady;
   }
-  // HEARTBEAT — each frame is a beat; a sharp lub-dub then rest, so the companion reads as alive.
-  function heartbeat(t) {
-    var p = (t % 1.05) / 1.05;
-    var lub = Math.exp(-Math.pow((p - 0.0) * 13, 2));
-    var dub = Math.exp(-Math.pow((p - 0.16) * 15, 2)) * 0.7;
-    return lub + dub;
+  async function loadPlayerCart(m) {
+    var cart = await Bridge.normalizePlayable(m);
+    var port = await ensurePlayer();
+    port.postMessage({ type: "load-cartridge", cart: cart });
+    return cart;
   }
 
   // ---- Moment format ----
@@ -86,6 +67,16 @@
   }
   function encode(m) { return btoa(unescape(encodeURIComponent(JSON.stringify(m)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
   function decode(s) { try { s = s.replace(/-/g, "+").replace(/_/g, "/"); return JSON.parse(decodeURIComponent(escape(atob(s)))); } catch (e) { return null; } }
+  function isLegacy(m) { return Bridge && Bridge.isLegacyMoment(m); }
+  function isCart(m) { return Bridge && Bridge.isCartridge(m); }
+  function titleOf(m) { return m ? (m.title || m.t || "untitled") : "untitled"; }
+  function authorOf(m) { return m ? (m.author || m.a || "@anon") : "@anon"; }
+  function biomeOf(m) {
+    if (!m) return "savanna";
+    if (m.b && BIOMES[m.b]) return m.b;
+    if (m.born && m.born.from && BIOMES[m.born.from]) return m.born.from;
+    return "savanna";
+  }
 
   // BROWSER SIGNING — a per-browser ECDSA P-256 key (persisted in localStorage) signs each Moment on
   // Share, so authorship is cryptographically PROVABLE on a public repo and the market's distinct-signer
@@ -406,78 +397,26 @@
   W.openKeeper = openKeeper;
 
   // ---- playback state ----
-  var S = { mode: "feed", moment: null, frames: null, pf: 0, playing: true, dur: 14, lastBuild: 0, t0: perf(),
-            camOff: { theta: 0, height: 0, radius: 0 }, orbitT: 0, dragging: false };   // persistent camera offset + auto-orbit clock
+  var S = { mode: "feed", moment: null, cart: null, frames: null, pf: 0, playing: true, dur: 14, t0: perf() };
   function perf() { return W.performance.now() / 1000; }
-  function applyFrame(pf, force) {
-    if (!S.frames) return;
-    var i = Math.max(0, Math.min(99, Math.floor(pf))), f = pf - i;
-    var fr = lerpF(S.frames[i], S.frames[Math.min(99, i + 1)], f);
-    if (force || (S.t - S.lastBuild > 0.09)) { buildForm(fr); S.lastBuild = S.t; }
+  function applyFrame() {
+    if (S.mode === "create" && draft) previewDraft();
   }
-  function loadMoment(m) { S.moment = m; S.frames = expand(m); setBiome(m.b || "savanna"); S.pf = 0; S.lastBuild = -9; applyFrame(0, true); cur.set(FORM.position.x, 8, FORM.position.z + 15); }
-
-  // ---- camera ----
-  var cur = new THREE.Vector3(14, 8, 14), look = new THREE.Vector3(0, 1.5, 0);
-  function camTick(dt) {
-    var c = FORM ? FORM.position : new THREE.Vector3(), by = FORM ? FORM.bodyY : 1.5;
-    // auto-orbit runs on its OWN clock (orbitT) so grabbing the frame freezes it; your drag adds a PERSISTENT
-    // offset (camOff) that survives into resumed playback — reframe once, then watch it play back from your angle.
-    var ang = S.orbitT * 0.32 + S.camOff.theta, r = Math.max(3, 6.6 + Math.sin(S.orbitT * 0.5) * 1.8 + S.camOff.radius);
-    var pos = new THREE.Vector3(c.x + Math.cos(ang) * r, Math.max(0.6, by * 0.6 + 2 + Math.sin(S.orbitT * 0.4) * 1.1 + S.camOff.height), c.z + Math.sin(ang) * r);
-    var k = S.dragging ? 0.6 : (1 - Math.pow(0.02, dt));   // responsive while you drag, smooth otherwise
-    cur.lerp(pos, k); look.lerp(new THREE.Vector3(c.x, by * 0.6, c.z), k);
-    camera.position.copy(cur); camera.lookAt(look);
+  async function loadMoment(m) {
+    S.moment = m;
+    S.frames = isLegacy(m) ? expand(m) : null;
+    S.pf = 0;
+    setBiome(biomeOf(m));
+    try { S.cart = await loadPlayerCart(m); }
+    catch (e) { toast("couldn't load hologram"); }
+    return S.cart;
   }
 
-  // GRAB-TO-REFRAME — grab the frame any time (playing OR paused): it FREEZES while you drag, and the
-  // perspective you set PERSISTS, so playback resumes from your new angle. camOff is that persistent offset.
   function setScanHint(on) { var h = D.getElementById("scanhint"); if (h) h.className = on ? "" : "hide"; }
   W.setScanHint = setScanHint;
-  W.camState = function () { return { camOff: { theta: +S.camOff.theta.toFixed(4), height: +S.camOff.height.toFixed(3), radius: +S.camOff.radius.toFixed(3) }, dragging: S.dragging, orbitT: +S.orbitT.toFixed(3), pf: Math.round(S.pf), playing: S.playing, cam: { x: +camera.position.x.toFixed(3), y: +camera.position.y.toFixed(3), z: +camera.position.z.toFixed(3) } }; };
+  W.camState = function () { return { player: "lantern", ready: !!playerPort, pf: Math.round(S.pf), playing: true }; };
   W.scanState = W.camState;   // back-compat alias
-  W.resetCam = function () { S.camOff.theta = 0; S.camOff.height = 0; S.camOff.radius = 0; };
-  (function () {
-    var dragging = false, lx = 0, ly = 0, pinch = 0, cv = D.getElementById("c");
-    if (!cv) return;
-    function grab() { return S.mode === "play" && !!S.frames; }   // reframe whenever a hologram is loaded in the player
-    function down(x, y) { if (!grab()) return; dragging = true; S.dragging = true; lx = x; ly = y; cv.style.cursor = "grabbing"; setScanHint(true); }
-    function move(x, y) { if (!dragging) return; var dx = x - lx, dy = y - ly; lx = x; ly = y;
-      S.camOff.theta -= dx * 0.008; S.camOff.height = Math.max(-4, Math.min(11, S.camOff.height + dy * 0.05)); }
-    function up() { if (!dragging) return; dragging = false; S.dragging = false; cv.style.cursor = "grab"; setScanHint(false); }
-    function zoom(d) { if (!grab()) return; S.camOff.radius = Math.max(-5, Math.min(34, S.camOff.radius + d)); }
-    cv.addEventListener("mousedown", function (e) { down(e.clientX, e.clientY); });
-    W.addEventListener("mousemove", function (e) { move(e.clientX, e.clientY); });
-    W.addEventListener("mouseup", up);
-    cv.addEventListener("wheel", function (e) { if (!grab()) return; e.preventDefault(); zoom(e.deltaY > 0 ? 1.6 : -1.6); }, { passive: false });
-    cv.addEventListener("touchstart", function (e) { if (!grab()) return; if (e.touches.length === 1) down(e.touches[0].clientX, e.touches[0].clientY);
-      else if (e.touches.length === 2) pinch = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); }, { passive: true });
-    cv.addEventListener("touchmove", function (e) {
-      if (e.touches.length === 1) move(e.touches[0].clientX, e.touches[0].clientY);
-      else if (e.touches.length === 2) { var d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); if (pinch) zoom((pinch - d) * 0.06); pinch = d; } }, { passive: true });
-    cv.addEventListener("touchend", function () { pinch = 0; up(); });
-  })();
-
-  // ---- main loop ----
-  var last = perf();
-  function tick() {
-    var now = perf(), dt = Math.min(now - last, 0.05); last = now; S.t = now;
-    if ((S.mode === "play" || S.mode === "create" || S.pip) && S.frames) {
-      // play: honor pause. create: no auto-advance. PiP while navigated away: keep looping.
-      var playing = (S.mode === "play") ? S.playing : (S.mode === "create" ? false : true);
-      // GRABBING the frame freezes it: pf, bob, beat AND the auto-orbit clock all hold while you reframe.
-      var moving = ((S.mode === "create") || playing) && !S.dragging;
-      if (moving) { S.pf += dt * (99 / S.dur); if (S.pf >= 99) S.pf = 0; S.orbitT += dt; }
-      if (FORM && moving) FORM.position.y = Math.abs(Math.sin(now * 5)) * 0.1;
-      applyFrame(S.pf, false);
-      if (FORM) { var beat = moving ? heartbeat(now) : 0;   // the companion's heartbeat — pulse the body + glow
-        FORM.scale.setScalar(1 + beat * 0.045);
-        if (FORM.heartLight) FORM.heartLight.intensity = FORM.baseLI * (1 + beat * 0.65); }
-      camTick(dt);   // always drive the camera — auto-orbits when moving, follows your drag (persistent offset) when grabbed
-      if (S.mode === "play") updatePC();
-    } else { camera.position.set(0, 6, 16); camera.lookAt(0, 1, 0); }
-    renderer.render(scene, camera); requestAnimationFrame(tick);
-  }
+  W.resetCam = function () {};
 
   // ---- UI helpers ----
   function $(id) { return D.getElementById(id); }
@@ -494,7 +433,7 @@
     if (mode === "kindred") { show("kindred"); }
     if (mode === "keeper") { show("keeper"); }
     if (mode === "create") { show("create"); initCreate(); }
-    if (mode === "play") { show("pc"); show("ptitle"); $("navShare").style.display = ""; $("navRemix").style.display = ""; $("navMint").style.display = ""; $("navEgg").style.display = ""; $("navKindred").style.display = ""; $("navBio").style.display = ""; $("navDeed").style.display = ""; $("navPip").style.display = ((D.pictureInPictureEnabled !== false) ? "" : "none"); }
+    if (mode === "play") { show("ptitle"); }
   }
   W.go = go;
 
@@ -507,16 +446,23 @@
     { v: 1, t: "Tides", a: "@blue", b: "forest", k: [{ at: 0, s: .6, l: .3, p: .2, g: .5, h: 200, x: 0, z: -.5 }, { at: 33, s: .4, l: .3, p: .2, g: .8, h: 190, x: 0, z: .5 }, { at: 66, s: .6, l: .3, p: .2, g: .5, h: 210, x: 0, z: -.5 }, { at: 99, s: .4, l: .3, p: .2, g: .8, h: 190, x: 0, z: .5 }] }
   ];
   function thumbStyle(m) {
-    var h0 = m.k[0].h, h1 = m.k[m.k.length - 1].h;
-    return "background:linear-gradient(135deg,hsl(" + h0 + ",65%,45%),hsl(" + h1 + ",70%,32%))";
+    var colors;
+    if (isCart(m)) {
+      var pal = (((m || {}).genome || {}).layers || []).filter(function (l) { return l.role === "surface"; })[0];
+      colors = (pal && pal.palette) || ["#4488ff", "#2255cc"];
+    } else {
+      var h0 = m.k[0].h, h1 = m.k[m.k.length - 1].h;
+      colors = ["hsl(" + h0 + ",65%,45%)", "hsl(" + h1 + ",70%,32%)"];
+    }
+    return "background:radial-gradient(circle at 50% 38%,rgba(255,255,255,.18),transparent 36%),linear-gradient(135deg," + colors[0] + "," + colors[Math.min(colors.length - 1, 3)] + ")";
   }
   function renderFeed() {
     var g = $("grid"); g.innerHTML = "";
     var all = SEED.concat(W.__EXTRA_MOMENTS__ || []);
     all.forEach(function (m) {
       var card = D.createElement("div"); card.className = "card";
-      card.innerHTML = '<div class="thumb" style="' + thumbStyle(m) + '"><span class="tag">100 frames</span><span class="play">▶</span></div>' +
-        '<div class="meta"><div class="ti">' + esc(m.t) + '</div><div class="au">' + esc(m.a || "@anon") + ' · ' + (m.b || "savanna") + '</div></div>';
+      card.innerHTML = '<div class="thumb" style="' + thumbStyle(m) + '"><span class="tag">lantern</span><span class="play">▶</span></div>' +
+        '<div class="meta"><div class="ti">' + esc(titleOf(m)) + '</div><div class="au">' + esc(authorOf(m)) + ' · ' + biomeOf(m) + '</div></div>';
       card.onclick = function () { openPlay(m); };
       g.appendChild(card);
     });
@@ -524,14 +470,25 @@
   function esc(s) { return (s || "").replace(/[<>&"]/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]; }); }
 
   // ---- PLAY ----
-  function openPlay(m, push) {
-    go("play"); loadMoment(m); S.playing = true; $("ppBtn").textContent = "❚❚";
-    $("ptitle").innerHTML = esc(m.t) + ' <span class="au">' + esc(m.a || "@anon") + "</span>";
+  async function openPlay(m, push) {
+    go("play"); await loadMoment(m);
+    $("ptitle").innerHTML = esc(titleOf(m)) + ' <span class="au">' + esc(authorOf(m)) + "</span>";
     if (push !== false) history.replaceState(0, 0, location.pathname + "?m=" + encode(m));
-    verifyMoment(m).then(function (ok) {   // show a provable-authorship badge when the signature verifies
+    if (isLegacy(m)) verifyMoment(m).then(function (ok) {   // show a provable-authorship badge when the signature verifies
       if (ok && m.pub) $("ptitle").innerHTML += ' <span class="au" style="color:var(--pa)">✓ signed ' + (m.pub.x || "").slice(0, 10) + '…</span>';
     });
-    if (m.born != null && W.Organism) {     // a spacetime-born organism: show its exact instant + verify the binding
+    if (isLegacy(m)) {
+      $("navShare").style.display = "";
+      $("navRemix").style.display = "";
+      $("navMint").style.display = "";
+      $("navEgg").style.display = "";
+      $("navKindred").style.display = "";
+      $("navBio").style.display = "";
+      $("navDeed").style.display = "";
+    } else {
+      $("navShare").style.display = "";
+    }
+    if (m.born != null && W.Organism && isLegacy(m)) {     // a spacetime-born organism: show its exact instant + verify the binding
       var bound = W.Organism.verifyCoordinate(m), when = new Date(m.born).toISOString().replace("T", " ").replace(".000Z", " UTC").replace("Z", " UTC");
       var where = (m.loc && m.loc.place) ? " · " + esc(m.loc.place) : (m.loc ? " · " + m.loc.lat + "," + m.loc.lng : "");
       var rid = W.Rappid ? W.Rappid.ofMoment(m.pk) : "";
@@ -539,26 +496,16 @@
       if (W.Ownership) resolveOwner(m).then(function (d) { if (d && d.owner) $("ptitle").innerHTML += ' <span class="au" style="color:var(--pa)">· owned by ' + esc((d.ownerRappid || "").replace("rappid:keeper:", "").slice(0, 14)) + '…' + (d.transfers ? " (" + d.transfers + "↦)" : "") + '</span>'; });
     }
   }
-  W.togglePlay = function () { S.playing = !S.playing; $("ppBtn").textContent = S.playing ? "❚❚" : "▶"; setScanHint(!S.playing); };
-  W.restart = function () { S.pf = 0; S.playing = true; $("ppBtn").textContent = "❚❚"; setScanHint(false); };
-  W.scrubAt = function (e) { var r = $("track").getBoundingClientRect(); S.pf = Math.max(0, Math.min(99, (e.clientX - r.left) / r.width * 99)); S.playing = false; $("ppBtn").textContent = "▶"; applyFrame(S.pf, true); setScanHint(true); };
-  function updatePC() { $("fl").textContent = "FRAME " + Math.round(S.pf) + " / 99"; $("fill").style.width = (S.pf / 99 * 100) + "%"; }
+  W.togglePlay = function () {};
+  W.restart = function () {};
+  W.scrubAt = function () {};
+  function updatePC() {}
   W.remix = function () { if (S.moment) { go("create"); loadIntoCreate(S.moment); } };
 
   // PICTURE-IN-PICTURE — float the live hologram in an always-on-top OS window so it keeps playing
   // while you work in other apps. Captures the WebGL canvas to a stream and PiPs it (no fullscreen).
   async function pipHologram() {
-    var vid = $("pipvid");
-    try {
-      if (D.pictureInPictureElement) { await D.exitPictureInPicture(); S.pip = false; return; }
-      if (!S.pipStream) S.pipStream = renderer.domElement.captureStream(30);
-      vid.srcObject = S.pipStream; vid.muted = true;
-      await vid.play();
-      await vid.requestPictureInPicture();
-      S.pip = true;
-      vid.addEventListener("leavepictureinpicture", function () { S.pip = false; }, { once: true });
-      toast("hologram floating — keep working ✦");
-    } catch (e) { toast("picture-in-picture isn't available here"); }
+    toast("picture-in-picture isn't available for the embedded Lantern player");
   }
   W.pipHologram = pipHologram;
 
@@ -570,7 +517,12 @@
   }
   function writeSliders(f) { $("rS").value = f.s * 100; $("rL").value = f.l * 100; $("rP").value = f.p * 100; $("rG").value = f.g * 100; $("rH").value = f.h; $("rX").value = f.x * 100; $("rZ").value = f.z * 100; updateSliderLabels(); }
   function updateSliderLabels() { $("vS").textContent = Math.round($("rS").value); $("vL").textContent = Math.round($("rL").value); $("vP").textContent = Math.round($("rP").value); $("vG").textContent = Math.round($("rG").value); $("vH").textContent = Math.round($("rH").value) + "°"; $("vX").textContent = Math.round($("rX").value); $("vZ").textContent = Math.round($("rZ").value); }
-  function previewDraft() { draft.k.sort(function (a, b) { return a.at - b.at; }); S.frames = expand(draft); setBiome($("cBiome").value); }
+  function previewDraft() {
+    draft.k.sort(function (a, b) { return a.at - b.at; });
+    S.frames = expand(draft);
+    setBiome($("cBiome").value);
+    loadMoment(draft);
+  }
   function curFrameFromSlider() {
     var f = readSliders(); f.at = draft.k[selKey].at; draft.k[selKey] = clampF(f); previewDraft();
     // live-apply at the selected keyframe's frame
@@ -605,15 +557,17 @@
   var shareMoment = null;
   async function openShare(m) {
     shareMoment = m || S.moment; if (!shareMoment) return;
-    await signMoment(shareMoment);                          // sign with the browser key — provable authorship
-    addToZoo(shareMoment);                                  // it joins your menagerie
+    if (isLegacy(shareMoment)) {
+      await signMoment(shareMoment);                        // sign with the browser key — provable authorship
+      addToZoo(shareMoment);                                // it joins your menagerie
+    }
     var url = location.origin + location.pathname + "?m=" + encode(shareMoment);
     $("surl").value = url;
     var box = $("qrbox"); box.innerHTML = "";
     try { new QRCode(box, { text: url, width: 168, height: 168, correctLevel: QRCode.CorrectLevel.H }); }
     catch (e) { box.textContent = "(scan via the link below)"; }
     var fp = (shareMoment.pub && shareMoment.pub.x) ? shareMoment.pub.x.slice(0, 16) : "";
-    var h = D.querySelector("#sheet h3"); if (h) h.innerHTML = "Your Holographic Moment" + (fp ? "<span style='display:block;color:var(--pa);font-size:12px;font-weight:600;margin-top:5px'>✓ signed by your key · " + fp + "…</span>" : "");
+    var h = D.querySelector("#sheet h3"); if (h) h.innerHTML = isCart(shareMoment) ? "Your Lantern Cartridge" : ("Your Holographic Moment" + (fp ? "<span style='display:block;color:var(--pa);font-size:12px;font-weight:600;margin-top:5px'>✓ signed by your key · " + fp + "…</span>" : ""));
     show("share");
   }
   W.openShare = function () { openShare(S.moment); };
@@ -659,19 +613,19 @@
   W.playShared = function () { hide("share"); openPlay(shareMoment); };
 
   // ---- boot ----
-  W.addEventListener("resize", function () { camera.aspect = W.innerWidth / W.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(W.innerWidth, W.innerHeight); });
+  W.addEventListener("resize", function () {});
   function boot() {
     var q = new URLSearchParams(location.search);
     setBiome("savanna");
     // optionally augment the feed from a committed manifest
     fetch("moments.json").then(function (r) { return r.json(); }).then(function (j) { W.__EXTRA_MOMENTS__ = j.moments || j; if (S.mode === "feed") renderFeed(); }).catch(function () {});
-    if (q.get("mint")) { var mm = decode(q.get("mint")); if (mm) { S.moment = mm; S.frames = expand(mm); setBiome(mm.b || "savanna"); requestAnimationFrame(tick); openMint(parseInt(q.get("n"), 10) || 50); return; } }
-    if (q.get("m")) { var m = decode(q.get("m")); if (m) { openPlay(m, false); requestAnimationFrame(tick); return; } }
-    if (q.get("dial")) { var dorg = W.Organism && W.Organism.fromPk(q.get("dial")); if (dorg) { openPlay(dorg, false); if (q.has("bio")) setTimeout(function () { openBio(dorg.pk); }, 350); if (q.has("grew")) setTimeout(function () { openGrew(dorg.pk); }, 350); if (q.get("at")) setTimeout(function () { dialAt(dorg.pk, parseInt(q.get("at"), 10)); }, 100); if (q.has("lineage")) setTimeout(function () { openLineage(dorg.pk); }, 350); requestAnimationFrame(tick); return; } }
-    if (q.get("keeper")) { openKeeper(q.get("keeper")); requestAnimationFrame(tick); return; }
-    if (q.has("zoo")) { go("zoo"); requestAnimationFrame(tick); return; }
-    if (q.has("create")) { go("create"); requestAnimationFrame(tick); return; }
-    go("feed"); requestAnimationFrame(tick);
+    if (q.get("mint")) { var mm = decode(q.get("mint")); if (mm && isLegacy(mm)) { S.moment = mm; S.frames = expand(mm); setBiome(mm.b || "savanna"); openMint(parseInt(q.get("n"), 10) || 50); return; } }
+    if (q.get("m")) { var m = decode(q.get("m")); if (m) { openPlay(m, false); return; } }
+    if (q.get("dial")) { var dorg = W.Organism && W.Organism.fromPk(q.get("dial")); if (dorg) { openPlay(dorg, false); if (q.has("bio")) setTimeout(function () { openBio(dorg.pk); }, 350); if (q.has("grew")) setTimeout(function () { openGrew(dorg.pk); }, 350); if (q.get("at")) setTimeout(function () { dialAt(dorg.pk, parseInt(q.get("at"), 10)); }, 100); if (q.has("lineage")) setTimeout(function () { openLineage(dorg.pk); }, 350); return; } }
+    if (q.get("keeper")) { openKeeper(q.get("keeper")); return; }
+    if (q.has("zoo")) { go("zoo"); return; }
+    if (q.has("create")) { go("create"); return; }
+    go("feed");
   }
   boot();
 })();
