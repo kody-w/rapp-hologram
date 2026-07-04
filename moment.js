@@ -446,9 +446,14 @@
     { v: 1, t: "Tides", a: "@blue", b: "forest", k: [{ at: 0, s: .6, l: .3, p: .2, g: .5, h: 200, x: 0, z: -.5 }, { at: 33, s: .4, l: .3, p: .2, g: .8, h: 190, x: 0, z: .5 }, { at: 66, s: .6, l: .3, p: .2, g: .5, h: 210, x: 0, z: -.5 }, { at: 99, s: .4, l: .3, p: .2, g: .8, h: 190, x: 0, z: .5 }] }
   ];
   function thumbStyle(m) {
-    var cart = Bridge.normalizePlayableSync(m);
-    var pal = (((cart || {}).genome || {}).layers || []).filter(function (l) { return l.role === "surface"; })[0];
-    var colors = (pal && pal.palette) || ["#4488ff", "#2255cc"];
+    var colors;
+    if (isCart(m)) {
+      var pal = (((m || {}).genome || {}).layers || []).filter(function (l) { return l.role === "surface"; })[0];
+      colors = (pal && pal.palette) || ["#4488ff", "#2255cc"];
+    } else {
+      var h0 = m.k[0].h, h1 = m.k[m.k.length - 1].h;
+      colors = ["hsl(" + h0 + ",65%,45%)", "hsl(" + h1 + ",70%,32%)"];
+    }
     return "background:radial-gradient(circle at 50% 38%,rgba(255,255,255,.18),transparent 36%),linear-gradient(135deg," + colors[0] + "," + colors[Math.min(colors.length - 1, 3)] + ")";
   }
   function renderFeed() {

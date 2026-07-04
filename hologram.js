@@ -196,8 +196,8 @@
   function isLegacyMoment(v) { return !!(v && Array.isArray(v.k)); }
   function isCartridge(v) { return !!(v && v.schema === "hologram-cartridge/1.0" && v.genome); }
   function normalizePlayableSync(v) {
-    if (isCartridge(v)) return v.id ? v : finalizeCartSync(v);
-    if (isLegacyMoment(v)) return finalizeCartSync(legacyMomentToCartridgeBase(v));
+    if (isCartridge(v)) return v.id || !nodeCrypto ? v : finalizeCartSync(v);
+    if (isLegacyMoment(v)) return nodeCrypto ? finalizeCartSync(legacyMomentToCartridgeBase(v)) : legacyMomentToCartridgeBase(v);
     throw new Error("unsupported playable");
   }
   async function normalizePlayable(v) {
