@@ -5,7 +5,7 @@
 <style>
 :root{--bg:#06080d;--pa:#4ade80;--pb:#38bdf8;--pc:#fb7185;--ink:#e8edf4;--mut:#8b95a5;--card:#10141d}
 *{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:Helvetica Neue,Arial,sans-serif;overflow:hidden}
-#c{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+#player{position:fixed;inset:0;width:100vw;height:100vh;display:block;border:0;background:var(--bg)}
 .hide{display:none!important}
 /* top bar */
 #bar{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:12px;padding:12px 18px;z-index:10;
@@ -104,7 +104,7 @@ button.ghost{background:transparent}
 @media(max-width:640px){#create{width:100vw;top:58px}#hero h1{font-size:30px}}
 </style></head>
 <body>
-<canvas id="c"></canvas>
+<iframe id="player" src="player.html?embed=1" title="Lantern hologram player"></iframe>
 <div id="bar">
   <div id="logo" onclick="go('feed')">🦋 <b>Moment</b></div><div class="sp"></div>
   <button class="ghost" id="navRemix" onclick="remix()" style="display:none">⎘ Remix</button>
@@ -211,8 +211,7 @@ button.ghost{background:transparent}
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="qrcode.min.js"></script>
 <div id="bio" class="hide">
   <div id="biotop"><div><div id="biohdr"></div><div id="biosub" class="zk"></div></div><div class="sp"></div><button class="ghost" onclick="closeBio()">✕</button></div>
   <div id="biobody"></div>
@@ -223,5 +222,6 @@ button.ghost{background:transparent}
 <script src="rappid.js"></script>
 <script src="ownership.js"></script>
 <script src="fidelity.js"></script>
+<script src="hologram.js"></script>
 <script src="moment.js"></script>
 </body></html>
